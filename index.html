@@ -1,0 +1,240 @@
+﻿<!DOCTYPE html>
+<html>
+	<head>
+		<title>Індивідуальне завдання</title>
+		<style>
+			body {	
+				margin: auto;
+				overflow: hidden;
+			}
+		</style>
+		<script src="js/Three.js"></script>
+		<script src="js/OrbitControls.js"></script>
+		<script src="js/KeyboardState.js"></script>
+		<script src="js/water-material.js"></script>
+	
+		<!-- Відображення інформації у кнопочці -->
+		<script src="js/jquery-1.9.1.js"></script>
+		<script src="js/jquery-ui.js"></script>
+		<link rel=stylesheet href="css/jquery-ui.css" />
+		<link rel=stylesheet href="css/info.css"/>
+		<script src="js/info.js"></script>
+		<div id="infoButton"></div>
+		<div id="infoBox" title="Індивідуальне завдання">
+		<h1 align="center" style="font-size:110%;">Управління:</h1>
+		1 - Камера корабля.<br>
+		2 - Головна камера.<br>
+		W - Рухатись вперед.<br>
+		S - Рухатись назад.<br>
+		A - Повернути ліворуч.<br>
+		D - Повернути праворуч.<br>
+		<div align="center" style="font-size:105%;">Copyright &copy; 2016, <b>Вася Кіш</b></div>
+		</div>
+	
+		<script>
+
+		//Глобальні змінні		
+		var scene, renderer, topCamera, chaseCamera, light;
+		var chaseCameraActive = false;
+		var loader;
+
+		var keyboard = new KeyboardState();
+
+		var water, ship;
+
+		function initScene() {	
+			//Створюємо сцену і встановлюємо її розмір
+			scene = new THREE.Scene();
+			var WIDTH = window.innerWidth,
+			HEIGHT = window.innerHeight;
+
+			//Створюємо рендерер і додаємо його в DOM
+			renderer = new THREE.WebGLRenderer({antialias:true});
+			renderer.setSize(WIDTH, HEIGHT);
+			document.body.appendChild(renderer.domElement);
+			
+			//Створюємо головну камеру та додаємо на сцену
+			topCamera = new THREE.PerspectiveCamera(55, WIDTH / HEIGHT, 0.5, 3000000);
+			topCamera.position.set(250, 150, -300);
+			topCamera.lookAt(new THREE.Vector3(0, 0, 0));
+			scene.add(topCamera);
+
+			//Камера для корабля
+			chaseCamera = new THREE.PerspectiveCamera(55, WIDTH / HEIGHT, 0.5, 3000000);
+			scene.add(chaseCamera);
+			
+			//Створюємо подію listener, яка змінює розміри рендера з вікном браузера
+			window.addEventListener('resize', function() {
+						var WIDTH = window.innerWidth,
+						HEIGHT = window.innerHeight;
+						renderer.setSize(WIDTH, HEIGHT);
+						topCamera.aspect = WIDTH / HEIGHT;
+						topCamera.updateProjectionMatrix();
+			});
+
+			//Встановлюємо колір фону сцени
+			renderer.setClearColor(0xffffff, 1);
+						
+			//Створюємо освітлення, задаємо позицію та додаємо на сцену
+			var directionalLight1 = new THREE.DirectionalLight(0xffff55, 1.3);
+			directionalLight1.position.set(-600, 300, 600);
+			scene.add(directionalLight1);
+			
+			var directionalLight2 = new THREE.DirectionalLight(0xffff55, 1.3);
+			directionalLight2.position.set(600, 300, -600);
+			scene.add(directionalLight2);
+
+			//----------------------------------------------------------------//	
+			//-----------------------------SKYBOX-----------------------------//
+			//----------------------------------------------------------------//
+			
+			//var axes = new THREE.AxisHelper(1000);
+			//scene.add( axes );
+			
+			//Задаємо картинки для скайбоксу
+			var imagePrefix = "images/";
+			var directions  = ["px", "nx", "py", "ny", "pz", "nz"];
+			var imageSuffix = ".jpg";
+			//Розмір скайбоксу
+			var skyGeometry = new THREE.CubeGeometry( 100000, 100000, 100000 );	//лывоправо,verx,передзад
+			
+			//Створення скайбоксу
+			var materialArray = [];
+			for (var i = 0; i < 6; i++)
+				materialArray.push( new THREE.MeshBasicMaterial({
+					map: THREE.ImageUtils.loadTexture( imagePrefix + directions[i] + imageSuffix ),
+					side: THREE.BackSide
+				}));
+				
+			var skyMaterial = new THREE.MeshFaceMaterial( materialArray );
+			var skyBox = new THREE.Mesh( skyGeometry, skyMaterial );
+			//положення на сцені скайбоксу
+			skyBox.position.set(0,0,0);
+			scene.add( skyBox );
+			
+			
+			//----------------------------------------------------------------//
+			//-------------------------------ВОДА-----------------------------//
+			//----------------------------------------------------------------//
+
+			//Текстура бля води		
+			var waterNormals = new THREE.ImageUtils.loadTexture('images/waternormals.jpg');
+			waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+
+			// Створення ефекту води
+			water = new THREE.Water(renderer, topCamera, scene, {
+				textureWidth: 256,
+				textureHeight: 256,
+				waterNormals: waterNormals,
+				alpha: 	1.0,
+				sunDirection: directionalLight1.position.normalize(),
+				sunColor: 0xffffff,
+				waterColor: 0x001e0f,
+				betaVersion: 0,
+				side: THREE.DoubleSide
+			});
+
+			//Розмір води (довжина, ширина)
+			var aMeshMirror = new THREE.Mesh(
+				new THREE.PlaneBufferGeometry(100000, 100000, 10, 10), 
+				water.material
+			);
+			aMeshMirror.add(water);
+			aMeshMirror.rotation.x = - Math.PI * 0.5;
+			scene.add(aMeshMirror);
+
+			//----------------------------------------------------------------//
+			//----------------------------КОРАБЕЛЬ----------------------------//
+			//----------------------------------------------------------------//
+			
+			loader = new THREE.JSONLoader();
+			//Завантаження моделі корабля
+			loader.load('models/ship.js', function ( geometry, materials ) {
+				//Завантаження текстури корабля
+				var texture = THREE.ImageUtils.loadTexture( "models/ship.jpg" );
+				//Застосування текстури до моделі
+				var material = new THREE.MeshLambertMaterial( { map : texture } );
+				ship = new THREE.Mesh( geometry, material );
+				//Позиція корабля
+				ship.position.set(0,0,0);
+				//Масштабування корабля
+				ship.scale.set(2,2,2);
+				//Відображення тіней
+				ship.receiveShadow = true;
+				ship.castShadow = true;
+				scene.add(ship);
+				}
+			);
+
+			// Рендер тіней сцени
+			renderer.shadowMapEnabled = true;
+			renderer.shadowMapSoft = true;
+				
+			//Додавання управління мишко, що можна крутити довкола сцени
+			controls = new THREE.OrbitControls(topCamera, renderer.domElement);
+		}
+
+		function animateScene() {
+		    requestAnimationFrame(animateScene);
+			renderScene();		
+			update();
+		}
+
+		function update() {	
+			water.material.uniforms.time.value += 1.0 / 60.0;
+			key();
+			//якщо активна не камера корабля то включаемо управлиння мишкою
+			if (!chaseCameraActive) {  
+				controls.update(); 
+			}			
+			keyboard.update();
+		}
+
+		//Управління кораблем
+		function key() {
+			if (ship) {
+				//Якщо натиснута W то рух вперед
+				if (keyboard.pressed("W")) ship.translateZ(3);		
+				//Якщо натиснута S то рух назад	
+				if (keyboard.pressed("S")) ship.translateZ(-3);
+				//Якщо натиснута A то поворот наліво	
+				if (keyboard.pressed("A")) ship.rotation.y+= 0.01;	
+				//Якщо натиснута D то поворот направо			
+				if (keyboard.pressed("D")) ship.rotation.y-= 0.01;
+				//Якщо натиснута R то корабель повертається у початкове положення	
+				if (keyboard.pressed("R")) ship.position.set(0,0,0);
+
+				//Позиція камери корабля
+				var relativeCameraOffset = new THREE.Vector3(0,80,-210);
+
+				var cameraOffset = relativeCameraOffset.applyMatrix4( ship.matrixWorld );
+
+				chaseCamera.position.x = cameraOffset.x;
+				chaseCamera.position.y = cameraOffset.y;
+				chaseCamera.position.z = cameraOffset.z;
+				chaseCamera.lookAt( ship.position );
+				
+				//Зміна камер		
+				if (keyboard.pressed("1")) chaseCameraActive = true;
+				if (keyboard.pressed("2")) chaseCameraActive = false;
+			}
+		}
+
+		function renderScene() {
+			water.render();
+			if (chaseCameraActive) {  
+				renderer.render( scene, chaseCamera );  
+			} else {  
+				renderer.render( scene, topCamera );
+			}
+		}
+
+		//Ініціалізація сцени
+		function onLoad() {
+		    initScene();
+		    animateScene();
+		}
+		</script>
+	</head>
+	<body onLoad="onLoad();"></body>
+</html>
